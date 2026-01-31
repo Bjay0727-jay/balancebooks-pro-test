@@ -9,7 +9,7 @@ const AppContext = createContext(null);
 const initialState = {
   view: 'dashboard',
   darkMode: loadData('darkMode', false),
-  transactions: [],
+  transactions: loadData('transactions', []),
   recurringExpenses: loadData('recurring', []),
   monthlyBalances: loadData('monthlyBalances', {}),
   savingsGoal: loadData('savingsGoal', 500),
@@ -111,21 +111,34 @@ function reducer(state, action) {
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [dbReady, setDbReady] = useState(false);
+  const txVersionRef = React.useRef(0);
 
-  // Load transactions from IndexedDB on mount
+  // Load transactions from IndexedDB on mount (upgrades from localStorage)
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      await migrateTransactions();
-      const txs = await loadTransactions();
-      if (txs.length > 0) dispatch({ type: 'SET_TRANSACTIONS', payload: txs });
-      setDbReady(true);
+      try {
+        await migrateTransactions();
+        const txs = await loadTransactions();
+        if (!cancelled && txs.length > 0) {
+          dispatch({ type: 'SET_TRANSACTIONS', payload: txs });
+        }
+      } catch {
+        // localStorage data already loaded via initialState
+      }
+      if (!cancelled) setDbReady(true);
     })();
+    return () => { cancelled = true; };
   }, []);
 
-  // Persist transactions to IndexedDB (skip initial load)
+  // Persist transactions to IndexedDB — skip the first trigger after dbReady
   useEffect(() => {
     if (!dbReady) return;
+    txVersionRef.current++;
+    if (txVersionRef.current <= 1) return; // skip the render right after dbReady flips
     saveTransactions(state.transactions);
+    // Also keep localStorage as fallback
+    saveData('transactions', state.transactions);
   }, [state.transactions, dbReady]);
   useEffect(() => { saveData('recurring', state.recurringExpenses); }, [state.recurringExpenses]);
   useEffect(() => { saveData('monthlyBalances', state.monthlyBalances); }, [state.monthlyBalances]);
