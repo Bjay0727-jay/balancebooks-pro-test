@@ -3,21 +3,9 @@ import { useApp } from '../context/AppContext';
 import { currency } from '../utils/helpers';
 
 export default function Recommendations() {
-  const { theme, savingsRecommendations, stats, monthTx, state } = useApp();
+  const { theme, savingsRecommendations } = useApp();
 
   const card = { background: theme.bgCard, borderRadius: '12px', border: theme.cardBorder, boxShadow: theme.cardShadow };
-
-  // Debug panel - remove after confirming fix
-  const debug = (
-    <div style={{ padding: '12px', background: '#1e1e1e', color: '#0f0', fontFamily: 'monospace', fontSize: '11px', borderRadius: '8px', marginBottom: '12px', whiteSpace: 'pre-wrap' }}>
-      <strong>DEBUG (remove after fix):</strong>{'\n'}
-      transactions total: {state.transactions.length}{'\n'}
-      monthTx (current month): {monthTx.length}{'\n'}
-      stats.income: {stats.income}, stats.expenses: {stats.expenses}, stats.saved: {stats.saved}{'\n'}
-      savingsRecommendations count: {savingsRecommendations.length}{'\n'}
-      recs: {JSON.stringify(savingsRecommendations.map(r => ({ id: r.id, title: r.title, type: r.type })), null, 1)}
-    </div>
-  );
 
   const typeColors = {
     success: { bg: theme.successBg, color: theme.success, icon: '✅' },
@@ -37,7 +25,6 @@ export default function Recommendations() {
         <div style={{ fontSize: '13px', opacity: 0.8 }}>Personalized recommendations based on your spending patterns</div>
       </div>
 
-      {debug}
       {savingsRecommendations.length === 0 ? (
         <div style={{ ...card, padding: '48px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
