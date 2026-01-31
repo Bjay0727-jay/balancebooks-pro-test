@@ -1,14 +1,15 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useState } from 'react';
 import { loadData, saveData, uid, getDateParts, getMonthKey, currency } from '../utils/helpers';
 import { CATEGORIES, MONTHS, APP_VERSION } from '../utils/constants';
 import { lightTheme, darkTheme } from '../utils/theme';
+import { migrateTransactions, loadTransactions, saveTransactions } from '../utils/db';
 
 const AppContext = createContext(null);
 
 const initialState = {
   view: 'dashboard',
   darkMode: loadData('darkMode', false),
-  transactions: loadData('transactions', []),
+  transactions: [],
   recurringExpenses: loadData('recurring', []),
   monthlyBalances: loadData('monthlyBalances', {}),
   savingsGoal: loadData('savingsGoal', 500),
@@ -109,9 +110,23 @@ function reducer(state, action) {
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [dbReady, setDbReady] = useState(false);
 
-  // Persist state changes
-  useEffect(() => { saveData('transactions', state.transactions); }, [state.transactions]);
+  // Load transactions from IndexedDB on mount
+  useEffect(() => {
+    (async () => {
+      await migrateTransactions();
+      const txs = await loadTransactions();
+      if (txs.length > 0) dispatch({ type: 'SET_TRANSACTIONS', payload: txs });
+      setDbReady(true);
+    })();
+  }, []);
+
+  // Persist transactions to IndexedDB (skip initial load)
+  useEffect(() => {
+    if (!dbReady) return;
+    saveTransactions(state.transactions);
+  }, [state.transactions, dbReady]);
   useEffect(() => { saveData('recurring', state.recurringExpenses); }, [state.recurringExpenses]);
   useEffect(() => { saveData('monthlyBalances', state.monthlyBalances); }, [state.monthlyBalances]);
   useEffect(() => { saveData('savingsGoal', state.savingsGoal); }, [state.savingsGoal]);
@@ -286,39 +301,80 @@ export function AppProvider({ children }) {
     const avgIncome = stats.income || 0;
     const savingsRate = avgIncome > 0 ? (stats.saved / avgIncome) * 100 : 0;
     const expenseRatio = avgIncome > 0 ? (stats.expenses / avgIncome) * 100 : 0;
+    const hasData = state.transactions.length > 0;
+    const hasMonthData = monthTx.length > 0;
 
+    // Category-based recommendations with lower, more realistic thresholds
     const checkCat = (id, threshold, recData) => {
       const val = catBreakdown.find(c => c.id === id)?.total || 0;
-      if (val > threshold) recs.push({ ...recData, potential: val * recData.savePct });
+      if (val > threshold) recs.push({ ...recData, potential: Math.round(val * recData.savePct) });
     };
 
-    checkCat('dining', 150, { id: 1, type: 'reduce', priority: 'high', title: 'Reduce Dining Out', description: `You spent ${currency(catBreakdown.find(c => c.id === 'dining')?.total || 0)} on dining. Consider meal prepping.`, savePct: 0.4, icon: '🍽️', tips: ['Cook at home 2 more days/week', 'Bring lunch to work', 'Use meal planning apps'] });
-    checkCat('subscriptions', 50, { id: 2, type: 'audit', priority: 'medium', title: 'Audit Subscriptions', description: `Review subscriptions and cancel unused services.`, savePct: 0.3, icon: '📱', tips: ['Cancel unused streaming', 'Look for annual discounts', 'Share family plans'] });
-    checkCat('shopping', 200, { id: 3, type: 'reduce', priority: 'high', title: 'Curb Impulse Shopping', description: `Try the 24-hour rule before non-essential purchases.`, savePct: 0.35, icon: '🛍️', tips: ['Wait 24hrs before buying over $50', 'Unsubscribe from retail emails', 'Use a shopping list'] });
-    checkCat('entertainment', 200, { id: 6, type: 'reduce', priority: 'medium', title: 'Find Free Entertainment', description: `Look for free local events and activities.`, savePct: 0.3, icon: '🎬', tips: ['Check library for free events', 'Host game nights at home', 'Explore free outdoor activities'] });
-    checkCat('transportation', 400, { id: 7, type: 'reduce', priority: 'medium', title: 'Lower Transport Costs', description: `Consider carpooling or combining trips.`, savePct: 0.2, icon: '🚗', tips: ['Combine errands', 'Use GasBuddy', 'Carpool 2-3 days/week'] });
-    checkCat('groceries', 600, { id: 8, type: 'reduce', priority: 'medium', title: 'Optimize Groceries', description: `Smart shopping can save 15-20% monthly.`, savePct: 0.15, icon: '🛒', tips: ['Make a list and stick to it', 'Buy store brands', 'Use cashback apps'] });
+    if (hasMonthData) {
+      checkCat('dining', 75, { id: 1, type: 'reduce', priority: 'high', title: 'Reduce Dining Out', description: `You spent ${currency(catBreakdown.find(c => c.id === 'dining')?.total || 0)} on dining this month. Meal prepping could cut this significantly.`, savePct: 0.4, tips: ['Cook at home 2 more days/week', 'Bring lunch to work', 'Use meal planning apps'] });
+      checkCat('subscriptions', 30, { id: 2, type: 'audit', priority: 'medium', title: 'Audit Subscriptions', description: `You're spending ${currency(catBreakdown.find(c => c.id === 'subscriptions')?.total || 0)}/mo on subscriptions. Review for unused services.`, savePct: 0.3, tips: ['Cancel unused streaming', 'Look for annual discounts', 'Share family plans'] });
+      checkCat('shopping', 100, { id: 3, type: 'reduce', priority: 'high', title: 'Curb Impulse Shopping', description: `${currency(catBreakdown.find(c => c.id === 'shopping')?.total || 0)} on shopping. Try the 24-hour rule before non-essential purchases.`, savePct: 0.35, tips: ['Wait 24hrs before buying over $50', 'Unsubscribe from retail emails', 'Use a shopping list'] });
+      checkCat('entertainment', 100, { id: 6, type: 'reduce', priority: 'medium', title: 'Find Free Entertainment', description: `Spent ${currency(catBreakdown.find(c => c.id === 'entertainment')?.total || 0)} on entertainment. Look for free local events.`, savePct: 0.3, tips: ['Check library for free events', 'Host game nights at home', 'Explore free outdoor activities'] });
+      checkCat('transportation', 200, { id: 7, type: 'reduce', priority: 'medium', title: 'Lower Transport Costs', description: `${currency(catBreakdown.find(c => c.id === 'transportation')?.total || 0)} on transportation. Consider carpooling or combining trips.`, savePct: 0.2, tips: ['Combine errands', 'Use GasBuddy', 'Carpool 2-3 days/week'] });
+      checkCat('groceries', 400, { id: 8, type: 'reduce', priority: 'medium', title: 'Optimize Groceries', description: `${currency(catBreakdown.find(c => c.id === 'groceries')?.total || 0)} on groceries. Smart shopping can save 15-20%.`, savePct: 0.15, tips: ['Make a list and stick to it', 'Buy store brands', 'Use cashback apps'] });
+    }
 
+    // Savings rate recommendations
     if (savingsRate < 10 && avgIncome > 0) {
-      recs.push({ id: 4, type: 'alert', priority: 'high', title: 'Savings Rate Below 10%', description: `Saving ${savingsRate.toFixed(1)}% — experts recommend 20%.`, potential: avgIncome * 0.1 - stats.saved, icon: '⚠️', tips: ['Auto-transfer to savings on payday', 'Start with $25-50/paycheck', 'Build 3-month emergency fund'] });
+      recs.push({ id: 4, type: 'alert', priority: 'high', title: 'Savings Rate Below 10%', description: `Saving ${savingsRate.toFixed(1)}% of income — experts recommend at least 20%.`, potential: Math.round(avgIncome * 0.1 - stats.saved), tips: ['Auto-transfer to savings on payday', 'Start with $25-50/paycheck', 'Build 3-month emergency fund'] });
     } else if (savingsRate < 20 && avgIncome > 0) {
-      recs.push({ id: 4, type: 'increase', priority: 'medium', title: 'Boost Savings to 20%', description: `Current: ${savingsRate.toFixed(1)}%. Add ${currency(avgIncome * 0.2 - stats.saved)} more.`, potential: avgIncome * 0.2 - stats.saved, icon: '📈', tips: ['Increase savings 1%/month', 'Save windfalls and bonuses', 'Follow 50/30/20 rule'] });
+      recs.push({ id: 4, type: 'increase', priority: 'medium', title: 'Boost Savings to 20%', description: `Currently saving ${savingsRate.toFixed(1)}%. Adding ${currency(avgIncome * 0.2 - stats.saved)} more would hit the target.`, potential: Math.round(avgIncome * 0.2 - stats.saved), tips: ['Increase savings 1%/month', 'Save windfalls and bonuses', 'Follow 50/30/20 rule'] });
     }
 
     if (expenseRatio > 90 && avgIncome > 0) {
-      recs.push({ id: 10, type: 'alert', priority: 'high', title: 'Living Paycheck to Paycheck', description: `Spending ${expenseRatio.toFixed(0)}% of income. Almost no buffer.`, potential: avgIncome * 0.1, icon: '🔴', tips: ['Track every expense for 1 week', 'Cut 1 non-essential expense now', 'Build $1k starter emergency fund'] });
+      recs.push({ id: 10, type: 'alert', priority: 'high', title: 'Living Paycheck to Paycheck', description: `Spending ${expenseRatio.toFixed(0)}% of income leaves almost no buffer for emergencies.`, potential: Math.round(avgIncome * 0.1), tips: ['Track every expense for 1 week', 'Cut 1 non-essential expense now', 'Build $1k starter emergency fund'] });
     }
 
     if (stats.unpaidCount > 3) {
-      recs.push({ id: 11, type: 'alert', priority: 'high', title: 'Manage Unpaid Bills', description: `${stats.unpaidCount} unpaid expenses. Stay on top of due dates.`, potential: 0, icon: '📋', tips: ['Set calendar reminders', 'Enable autopay for fixed bills', 'Review bills weekly'] });
+      recs.push({ id: 11, type: 'alert', priority: 'high', title: 'Manage Unpaid Bills', description: `You have ${stats.unpaidCount} unpaid expenses this month. Stay on top of due dates to avoid late fees.`, potential: 0, tips: ['Set calendar reminders', 'Enable autopay for fixed bills', 'Review bills weekly'] });
     }
 
-    if (savingsRate >= 20) {
-      recs.push({ id: 5, type: 'success', priority: 'low', title: 'Excellent Savings Rate!', description: `Saving ${savingsRate.toFixed(1)}% — above the 20% target!`, potential: 0, icon: '🏆', tips: ['Max out retirement accounts', 'Look into index fund investing', 'Keep it up!'] });
+    if (savingsRate >= 20 && avgIncome > 0) {
+      recs.push({ id: 5, type: 'success', priority: 'low', title: 'Excellent Savings Rate!', description: `Saving ${savingsRate.toFixed(1)}% of income — above the recommended 20% target!`, potential: 0, tips: ['Max out retirement accounts', 'Look into index fund investing', 'Keep it up!'] });
+    }
+
+    // Spending trend analysis (compare last 2 months)
+    if (spendingTrends.length >= 2) {
+      const current = spendingTrends[spendingTrends.length - 1];
+      const prev = spendingTrends[spendingTrends.length - 2];
+      if (prev.expenses > 0 && current.expenses > prev.expenses * 1.2) {
+        const increase = ((current.expenses - prev.expenses) / prev.expenses * 100).toFixed(0);
+        recs.push({ id: 12, type: 'alert', priority: 'medium', title: 'Spending Increased', description: `Expenses are up ${increase}% compared to last month (${currency(prev.expenses)} vs ${currency(current.expenses)}).`, potential: Math.round(current.expenses - prev.expenses), tips: ['Review recent purchases', 'Compare with your budget goals', 'Identify new recurring charges'] });
+      }
+    }
+
+    // Budget over-limit warnings
+    if (budgetStats.categoriesOverBudget > 0) {
+      recs.push({ id: 13, type: 'alert', priority: 'high', title: `${budgetStats.categoriesOverBudget} Budget(s) Over Limit`, description: `You've exceeded your budget in ${budgetStats.categoriesOverBudget} categor${budgetStats.categoriesOverBudget === 1 ? 'y' : 'ies'}. Review your Budget Goals page.`, potential: 0, tips: ['Pause non-essential spending in over-budget categories', 'Adjust budgets if they are unrealistic', 'Track daily spending in problem categories'] });
+    }
+
+    // Debt-related recommendations
+    if (state.debts.length > 0) {
+      const totalDebt = state.debts.reduce((s, d) => s + d.balance, 0);
+      const highInterest = state.debts.filter(d => d.interestRate > 15);
+      if (highInterest.length > 0) {
+        recs.push({ id: 14, type: 'alert', priority: 'high', title: 'High-Interest Debt', description: `You have ${highInterest.length} debt(s) above 15% APR totaling ${currency(highInterest.reduce((s, d) => s + d.balance, 0))}. Prioritize paying these down.`, potential: 0, tips: ['Use the avalanche method (highest rate first)', 'Consider balance transfer offers', 'Pay more than minimums when possible'] });
+      } else if (totalDebt > 0) {
+        recs.push({ id: 14, type: 'increase', priority: 'medium', title: 'Keep Paying Down Debt', description: `Total debt: ${currency(totalDebt)}. Check the Debt Payoff page for your payoff plan.`, potential: 0, tips: ['Stick to your payoff schedule', 'Apply any extra funds to debt', 'Celebrate milestones along the way'] });
+      }
+    }
+
+    // General tips when there's no data or no specific recommendations
+    if (!hasData) {
+      recs.push({ id: 20, type: 'increase', priority: 'low', title: 'Get Started', description: 'Add your first transactions to receive personalized money tips and spending insights.', potential: 0, tips: ['Add this month\'s income and expenses', 'Set budget goals for each category', 'Import past transactions via CSV or Excel'] });
+    } else if (recs.length === 0 && hasMonthData) {
+      recs.push({ id: 21, type: 'success', priority: 'low', title: 'You\'re Doing Great!', description: 'No issues detected this month. Keep tracking your finances to maintain healthy habits.', potential: 0, tips: ['Review your 12-month cycle regularly', 'Set new savings goals as you hit milestones', 'Keep your budget goals up to date'] });
+    } else if (recs.length === 0 && !hasMonthData) {
+      recs.push({ id: 22, type: 'increase', priority: 'low', title: 'No Data This Month', description: 'Add transactions for the current month to see personalized recommendations.', potential: 0, tips: ['Add income and expense transactions', 'Import from your bank statement', 'Use recurring bills to auto-generate entries'] });
     }
 
     return recs.sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.priority] - { high: 0, medium: 1, low: 2 }[b.priority]));
-  }, [catBreakdown, stats]);
+  }, [catBreakdown, stats, monthTx, state.transactions.length, spendingTrends, budgetStats, state.debts]);
 
   const value = {
     state, dispatch, theme,

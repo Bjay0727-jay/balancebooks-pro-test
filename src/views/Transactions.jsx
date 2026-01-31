@@ -1,16 +1,44 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES } from '../utils/constants';
 import { currency, shortDate, exportCSV } from '../utils/helpers';
 
 export default function Transactions() {
   const { state, dispatch, theme, filtered } = useApp();
+  const [selected, setSelected] = useState(new Set());
+
+  const pageItems = useMemo(() => filtered.slice(0, 50), [filtered]);
+
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(pageItems.map(t => t.id)));
+  const deselectAll = () => setSelected(new Set());
+
+  const markSelectedPaid = () => {
+    if (selected.size === 0) return;
+    dispatch({ type: 'BATCH_SET_PAID', payload: { ids: selected, paid: true } });
+    setSelected(new Set());
+  };
+
+  const markSelectedUnpaid = () => {
+    if (selected.size === 0) return;
+    dispatch({ type: 'BATCH_SET_PAID', payload: { ids: selected, paid: false } });
+    setSelected(new Set());
+  };
 
   const inputStyle = {
     padding: '10px 14px', background: theme.bgSecondary,
     border: theme.cardBorder, borderRadius: '8px', fontSize: '13px',
     color: theme.text, outline: 'none',
   };
+
+  const hasSelection = selected.size > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -42,25 +70,28 @@ export default function Transactions() {
       }}>
         <span style={{ fontSize: '13px', color: theme.textSecondary }}>
           <strong>{filtered.length}</strong> transactions
+          {hasSelection && <span style={{ color: theme.accent, marginLeft: '8px' }}>{selected.size} selected</span>}
           {state.transactions.length > 0 && <span style={{ color: theme.textMuted }}> &bull; Total: {state.transactions.length}</span>}
         </span>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {filtered.length > 0 && (
             <>
-              <button onClick={() => {
-                const ids = new Set(filtered.map(t => t.id));
-                dispatch({ type: 'BATCH_SET_PAID', payload: { ids, paid: true } });
-              }} style={{
-                padding: '8px 14px', background: theme.success, color: 'white',
-                border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
-              }}>✓ Select All</button>
-              <button onClick={() => {
-                const ids = new Set(filtered.map(t => t.id));
-                dispatch({ type: 'BATCH_SET_PAID', payload: { ids, paid: false } });
-              }} style={{
+              <button onClick={hasSelection ? deselectAll : selectAll} style={{
                 padding: '8px 14px', background: theme.bgHover, color: theme.text,
                 border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
-              }}>✕ Deselect All</button>
+              }}>{hasSelection ? '✕ Deselect All' : '☐ Select All'}</button>
+              {hasSelection && (
+                <>
+                  <button onClick={markSelectedPaid} style={{
+                    padding: '8px 14px', background: theme.success, color: 'white',
+                    border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                  }}>✓ Mark Paid ({selected.size})</button>
+                  <button onClick={markSelectedUnpaid} style={{
+                    padding: '8px 14px', background: theme.warning, color: 'white',
+                    border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                  }}>○ Mark Unpaid ({selected.size})</button>
+                </>
+              )}
             </>
           )}
           <button onClick={() => exportCSV(state.transactions)} style={{
@@ -70,6 +101,7 @@ export default function Transactions() {
           <button onClick={() => {
             if (state.transactions.length > 0 && confirm(`Delete ALL ${state.transactions.length} transactions? This cannot be undone.`)) {
               dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
+              setSelected(new Set());
             }
           }} style={{
             padding: '8px 14px', background: theme.danger, color: 'white',
@@ -91,19 +123,35 @@ export default function Transactions() {
               {state.search || state.filterCat !== 'all' || state.filterPaid !== 'all' ? 'Try adjusting your filters' : 'Add your first transaction to get started'}
             </p>
           </div>
-        ) : filtered.slice(0, 50).map((tx, i) => {
+        ) : pageItems.map((tx, i) => {
           const cat = CATEGORIES.find(c => c.id === tx.category);
+          const isSelected = selected.has(tx.id);
           return (
             <div key={tx.id} style={{
               display: 'flex', alignItems: 'center', padding: '12px 20px',
-              borderBottom: i < Math.min(filtered.length, 50) - 1 ? `1px solid ${theme.borderLight}` : 'none',
+              borderBottom: i < pageItems.length - 1 ? `1px solid ${theme.borderLight}` : 'none',
+              background: isSelected ? theme.accentLight : 'transparent',
             }}>
+              {/* Selection checkbox */}
+              <div
+                onClick={() => toggleSelect(tx.id)}
+                style={{
+                  width: '18px', height: '18px', borderRadius: '4px',
+                  border: isSelected ? 'none' : `2px solid ${theme.border}`,
+                  background: isSelected ? theme.accent : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginRight: '10px', cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                {isSelected && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
+              </div>
+              {/* Paid toggle */}
               <div
                 onClick={() => dispatch({ type: 'TOGGLE_PAID', payload: tx.id })}
                 style={{
-                  width: '18px', height: '18px', borderRadius: '5px',
+                  width: '18px', height: '18px', borderRadius: '50%',
                   border: tx.paid ? 'none' : `2px solid ${theme.border}`,
-                  background: tx.paid ? theme.accent : 'transparent',
+                  background: tx.paid ? theme.success : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   marginRight: '12px', cursor: 'pointer', flexShrink: 0,
                 }}

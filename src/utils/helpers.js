@@ -110,17 +110,8 @@ export const exportCSV = (transactions) => {
 };
 
 export const downloadTemplate = () => {
-  const rows = [
-    ['Date', 'Description', 'Amount', 'Category', 'Type', 'Paid'],
-    ['2025-01-15', 'Grocery Shopping', '-85.50', 'groceries', 'expense', 'yes'],
-    ['2025-01-14', 'Gas Station', '-45.00', 'transportation', 'expense', 'yes'],
-    ['2025-01-10', 'Electric Bill', '-125.00', 'utilities', 'expense', 'no'],
-    ['2025-01-01', 'Paycheck', '2500.00', 'income', 'income', 'yes'],
-  ];
-  const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'balance-books-template.csv';
+  a.href = '/BalanceBooks-Import-Template.xlsx';
+  a.download = 'BalanceBooks-Import-Template.xlsx';
   a.click();
-  URL.revokeObjectURL(a.href);
 };
