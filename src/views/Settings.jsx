@@ -89,7 +89,7 @@ export default function Settings() {
 
   const connectDropbox = () => {
     if (!DROPBOX_APP_KEY) {
-      alert('Dropbox integration requires an App Key.\n\nTo set up:\n1. Go to dropbox.com/developers/apps\n2. Create an app with "Full Dropbox" access\n3. Add your redirect URI\n4. Copy the App Key into Settings.jsx\n\nSee docs for details.');
+      dispatch({ type: 'SET_DIALOG', payload: { title: 'Setup Required', message: 'Dropbox integration requires an App Key.\n\nTo set up:\n1. Go to dropbox.com/developers/apps\n2. Create an app with "Full Dropbox" access\n3. Add your redirect URI\n4. Copy the App Key into Settings.jsx\n\nSee docs for details.', variant: 'info' } });
       return;
     }
     setDropboxStatus('connecting');
@@ -107,7 +107,7 @@ export default function Settings() {
 
   const backupToDropbox = async () => {
     const token = sessionStorage.getItem('bb_dropbox_token');
-    if (!token) { alert('Please connect Dropbox first.'); return; }
+    if (!token) { dispatch({ type: 'SET_DIALOG', payload: { title: 'Not Connected', message: 'Please connect Dropbox first.', variant: 'warning' } }); return; }
     setBackupProgress('uploading');
     try {
       const data = {
@@ -295,15 +295,21 @@ export default function Settings() {
       <div style={{ ...card, borderColor: theme.danger + '40' }}>
         {sectionTitle('⚠️', 'Danger Zone', 'Irreversible actions')}
         <button onClick={() => {
-          if (confirm('Are you sure you want to delete ALL data? This cannot be undone.')) {
-            dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
-            dispatch({ type: 'SET_RECURRING', payload: [] });
-            dispatch({ type: 'SET_DEBTS', payload: [] });
-            dispatch({ type: 'SET_BUDGET_GOALS', payload: {} });
-            dispatch({ type: 'SET_MONTHLY_BALANCES', payload: {} });
-            localStorage.clear();
-            alert('All data has been cleared.');
-          }
+          dispatch({ type: 'SET_DIALOG', payload: {
+            title: 'Delete All Data',
+            message: 'Are you sure you want to delete ALL data? This cannot be undone.',
+            variant: 'danger', confirmLabel: 'Delete Everything', cancelLabel: 'Cancel',
+            onConfirm: () => {
+              dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
+              dispatch({ type: 'SET_RECURRING', payload: [] });
+              dispatch({ type: 'SET_DEBTS', payload: [] });
+              dispatch({ type: 'SET_BUDGET_GOALS', payload: {} });
+              dispatch({ type: 'SET_MONTHLY_BALANCES', payload: {} });
+              localStorage.clear();
+              dispatch({ type: 'SET_DIALOG', payload: { title: 'Data Cleared', message: 'All data has been cleared.', variant: 'success' } });
+            },
+            onCancel: () => {},
+          }});
         }} style={{
           width: '100%', padding: '12px', background: 'transparent', color: theme.danger,
           border: `2px solid ${theme.danger}`, borderRadius: '8px', fontSize: '13px',

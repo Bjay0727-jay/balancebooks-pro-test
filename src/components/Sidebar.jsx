@@ -1,10 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { NAV_SECTIONS, APP_VERSION } from '../utils/constants';
-import { isMobile } from '../utils/helpers';
+import { getIsMobile } from '../utils/helpers';
 
 export default function Sidebar() {
   const { state, dispatch, theme, stats, budgetStats } = useApp();
+  const mobile = getIsMobile();
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (getIsMobile() && state.sidebarOpen) {
+        dispatch({ type: 'SET_SIDEBAR', payload: false });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [state.sidebarOpen, dispatch]);
 
   const badges = {
     transactions: stats.unpaidCount || null,
@@ -16,7 +27,7 @@ export default function Sidebar() {
 
   return (
     <>
-      {isMobile && state.sidebarOpen && (
+      {mobile && state.sidebarOpen && (
         <div
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 90 }}
           onClick={() => dispatch({ type: 'SET_SIDEBAR', payload: false })}
@@ -74,13 +85,13 @@ export default function Sidebar() {
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => {
                       dispatch({ type: 'SET_VIEW', payload: item.id });
-                      if (isMobile) dispatch({ type: 'SET_SIDEBAR', payload: false });
+                      if (mobile) dispatch({ type: 'SET_SIDEBAR', payload: false });
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         dispatch({ type: 'SET_VIEW', payload: item.id });
-                        if (isMobile) dispatch({ type: 'SET_SIDEBAR', payload: false });
+                        if (mobile) dispatch({ type: 'SET_SIDEBAR', payload: false });
                       }
                     }}
                     style={{

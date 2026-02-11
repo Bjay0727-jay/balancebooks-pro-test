@@ -6,23 +6,18 @@ export const currency = (n) => new Intl.NumberFormat('en-US', { style: 'currency
 
 export const shortDate = (dateStr) => {
   if (!dateStr) return '';
-  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const match = String(dateStr).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) {
     return `${MONTHS[parseInt(match[2]) - 1]} ${parseInt(match[3])}`;
   }
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return '';
 };
 
 export const getDateParts = (dateStr) => {
   if (!dateStr) return null;
-  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const match = String(dateStr).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) {
     return { year: parseInt(match[1]), month: parseInt(match[2]) - 1, day: parseInt(match[3]) };
-  }
-  const d = new Date(dateStr);
-  if (!isNaN(d.getTime())) {
-    return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
   }
   return null;
 };
@@ -30,6 +25,8 @@ export const getDateParts = (dateStr) => {
 export const getMonthKey = (m, y) => `${y}-${String(m).padStart(2, '0')}`;
 
 export const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
+export const getIsMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;
 
 // Persistence helpers with debounce
 let saveTimeout = null;

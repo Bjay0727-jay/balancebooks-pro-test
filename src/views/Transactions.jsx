@@ -204,9 +204,14 @@ export default function Transactions() {
             border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
           }}>📥 Export CSV</button>
           <button onClick={() => {
-            if (state.transactions.length > 0 && confirm(`Delete ALL ${state.transactions.length} transactions? This cannot be undone.`)) {
-              dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
-              setSelected(new Set());
+            if (state.transactions.length > 0) {
+              dispatch({ type: 'SET_DIALOG', payload: {
+                title: 'Delete All Transactions',
+                message: `Delete ALL ${state.transactions.length} transactions? This cannot be undone.`,
+                variant: 'danger', confirmLabel: 'Delete All', cancelLabel: 'Cancel',
+                onConfirm: () => { dispatch({ type: 'SET_TRANSACTIONS', payload: [] }); setSelected(new Set()); },
+                onCancel: () => {},
+              }});
             }
           }} style={{
             padding: '8px 14px', background: theme.danger, color: 'white',
