@@ -1,4 +1,4 @@
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2.0.3';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2.1.0';
 
 export const CATEGORIES = [
   { id: 'income', name: 'Income', color: '#059669', bg: '#ecfdf5', icon: '💵' },
