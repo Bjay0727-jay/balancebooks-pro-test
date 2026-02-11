@@ -41,6 +41,7 @@
       "deb"
     ],
     "icon": "build",
-    "category": "Office;Finance"
+    "category": "Office;Finance",
+    "maintainer": "BalanceBooks <support@balancebooks.pro>"
   }
 }
