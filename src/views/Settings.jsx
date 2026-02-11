@@ -40,7 +40,7 @@ export default function Settings() {
             setDropboxUser(name);
             sessionStorage.setItem('bb_dropbox_user', name);
           }
-        }).catch(() => {});
+        }).catch((err) => { console.warn('[BalanceBooks] Failed to fetch Dropbox user info:', err); });
       }
     }
   }, []);

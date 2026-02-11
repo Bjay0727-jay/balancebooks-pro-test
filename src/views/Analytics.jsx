@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { FULL_MONTHS } from '../utils/constants';
+import { FULL_MONTHS, PIE_CHART_CATEGORIES_LIMIT } from '../utils/constants';
 import { currency } from '../utils/helpers';
 
 export default function Analytics() {
@@ -62,10 +62,10 @@ export default function Analytics() {
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '24px', alignItems: 'center' }}>
-            <svg width="200" height="200" viewBox="0 0 200 200">
+            <svg width="200" height="200" viewBox="0 0 200 200" role="img" aria-label="Spending by category pie chart">
               {(() => {
                 let cumulative = 0;
-                return catBreakdown.slice(0, 8).map((cat) => {
+                return catBreakdown.slice(0, PIE_CHART_CATEGORIES_LIMIT).map((cat) => {
                   const pct = cat.pct / 100;
                   const startAngle = cumulative * 360;
                   cumulative += pct;
@@ -88,7 +88,7 @@ export default function Analytics() {
               <text x="100" y="112" textAnchor="middle" style={{ fontSize: '10px', fill: theme.textMuted }}>{currency(stats.expenses)}</text>
             </svg>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {catBreakdown.slice(0, 8).map(cat => (
+              {catBreakdown.slice(0, PIE_CHART_CATEGORIES_LIMIT).map(cat => (
                 <div key={cat.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', borderRadius: '6px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: cat.color }} />

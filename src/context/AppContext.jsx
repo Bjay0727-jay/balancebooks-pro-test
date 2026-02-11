@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useState } from 'react';
 import { loadData, saveData, uid, getDateParts, getMonthKey, currency } from '../utils/helpers';
-import { CATEGORIES, MONTHS, APP_VERSION } from '../utils/constants';
+import { CATEGORIES, MONTHS, APP_VERSION, DEBT_PAYOFF_MAX_MONTHS, SPENDING_HISTORY_MONTHS } from '../utils/constants';
 import { lightTheme, darkTheme } from '../utils/theme';
 import { migrateTransactions, loadTransactions, saveTransactions } from '../utils/db';
 
@@ -223,7 +223,7 @@ export function AppProvider({ children }) {
 
   const spendingTrends = useMemo(() => {
     const trends = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = SPENDING_HISTORY_MONTHS - 1; i >= 0; i--) {
       const m = (state.month - i + 12) % 12;
       const y = state.month - i < 0 ? state.year - 1 : state.year;
       const txs = state.transactions.filter(t => {
@@ -278,7 +278,7 @@ export function AppProvider({ children }) {
     const calculatePayoff = (sortedDebts) => {
       let totalInterestPaid = 0;
       let months = 0;
-      const maxMonths = 360;
+      const maxMonths = DEBT_PAYOFF_MAX_MONTHS;
       let balances = sortedDebts.map(d => ({ ...d, currentBalance: d.balance }));
       while (balances.some(d => d.currentBalance > 0) && months < maxMonths) {
         months++;

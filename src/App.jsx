@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from './context/AppContext';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -22,10 +22,12 @@ import { validateBackupData, validateImportTransactions, MAX_IMPORT_FILE_SIZE } 
 
 function AppContent() {
   const { state, dispatch, theme, stats } = useApp();
+  const [importing, setImporting] = useState(false);
 
   const handleFileImport = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || importing) return;
+    setImporting(true);
     if (file.size > MAX_IMPORT_FILE_SIZE) {
       alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_IMPORT_FILE_SIZE / 1024 / 1024} MB.`);
       e.target.value = '';
@@ -73,6 +75,7 @@ function AppContent() {
       alert(`Error reading file: ${err.message}`);
     }
     e.target.value = '';
+    setImporting(false);
   };
 
   const confirmImport = () => {

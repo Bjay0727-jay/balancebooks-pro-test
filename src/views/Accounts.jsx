@@ -1,6 +1,5 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { uid } from '../utils/helpers';
 
 export default function Accounts() {
   const { state, dispatch, theme } = useApp();
