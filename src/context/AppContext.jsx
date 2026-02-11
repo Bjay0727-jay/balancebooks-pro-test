@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useState } from 'react';
 import { loadData, saveData, uid, getDateParts, getMonthKey, currency } from '../utils/helpers';
-import { CATEGORIES, MONTHS, APP_VERSION } from '../utils/constants';
+import { CATEGORIES, MONTHS, APP_VERSION, DEBT_PAYOFF_MAX_MONTHS, SPENDING_HISTORY_MONTHS } from '../utils/constants';
 import { lightTheme, darkTheme } from '../utils/theme';
 import { migrateTransactions, loadTransactions, saveTransactions } from '../utils/db';
 
@@ -33,6 +33,7 @@ const initialState = {
   lastBackupDate: loadData('lastBackup', null),
   notificationsEnabled: loadData('notifications', false),
   restoreData: null,
+  dialog: null,
 };
 
 function reducer(state, action) {
@@ -90,6 +91,25 @@ function reducer(state, action) {
     case 'SET_LAST_BACKUP': return { ...state, lastBackupDate: action.payload };
     case 'SET_NOTIFICATIONS': return { ...state, notificationsEnabled: action.payload };
     case 'SET_RESTORE_DATA': return { ...state, restoreData: action.payload };
+    case 'SET_DIALOG': return { ...state, dialog: action.payload };
+    case 'CLOSE_MONTH': {
+      const { endingBalance, nextMonth, nextYear, nextMonthKey, unpaidTxs, recurringTxs } = action.payload;
+      const currentKey = getMonthKey(state.month, state.year);
+      const newBalances = {
+        ...state.monthlyBalances,
+        [currentKey]: { ...state.monthlyBalances[currentKey], ending: endingBalance },
+        [nextMonthKey]: { ...state.monthlyBalances[nextMonthKey], beginning: endingBalance },
+      };
+      const newTransactions = [...state.transactions, ...unpaidTxs, ...recurringTxs];
+      return {
+        ...state,
+        monthlyBalances: newBalances,
+        transactions: newTransactions,
+        month: nextMonth,
+        year: nextYear,
+        modal: null,
+      };
+    }
     case 'RESTORE_BACKUP': {
       const d = action.payload;
       return {
@@ -223,7 +243,7 @@ export function AppProvider({ children }) {
 
   const spendingTrends = useMemo(() => {
     const trends = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = SPENDING_HISTORY_MONTHS - 1; i >= 0; i--) {
       const m = (state.month - i + 12) % 12;
       const y = state.month - i < 0 ? state.year - 1 : state.year;
       const txs = state.transactions.filter(t => {
@@ -278,7 +298,7 @@ export function AppProvider({ children }) {
     const calculatePayoff = (sortedDebts) => {
       let totalInterestPaid = 0;
       let months = 0;
-      const maxMonths = 360;
+      const maxMonths = DEBT_PAYOFF_MAX_MONTHS;
       let balances = sortedDebts.map(d => ({ ...d, currentBalance: d.balance }));
       while (balances.some(d => d.currentBalance > 0) && months < maxMonths) {
         months++;
@@ -443,11 +463,56 @@ export function AppProvider({ children }) {
     return recs.sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.priority] - { high: 0, medium: 1, low: 2 }[b.priority]));
   }, [catBreakdown, stats, monthTx, state.transactions.length, spendingTrends, budgetStats, state.debts]);
 
+  const closeMonth = useCallback(() => {
+    const nextMonth = state.month === 11 ? 0 : state.month + 1;
+    const nextYear = state.month === 11 ? state.year + 1 : state.year;
+    const nextMonthKey = getMonthKey(nextMonth, nextYear);
+    const endingBalance = stats.calculatedEnding;
+
+    // Carry unpaid expenses forward — create new transactions dated 1st of next month
+    const unpaidExpenses = monthTx.filter(t => !t.paid && t.amount < 0);
+    const nextFirstDay = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01`;
+    const unpaidTxs = unpaidExpenses.map(t => ({
+      id: uid(),
+      date: nextFirstDay,
+      desc: `[Carried] ${t.desc}`,
+      amount: t.amount,
+      category: t.category,
+      paid: false,
+    }));
+
+    // Create transactions from active monthly recurring expenses
+    const activeMonthly = state.recurringExpenses.filter(r => r.active && r.frequency === 'monthly');
+    // Check if a recurring tx already exists in next month to avoid duplicates
+    const nextMonthTxDescs = state.transactions
+      .filter(t => { const p = getDateParts(t.date); return p && p.month === nextMonth && p.year === nextYear; })
+      .map(t => t.desc);
+
+    const recurringTxs = activeMonthly
+      .filter(r => !nextMonthTxDescs.includes(r.name))
+      .map(r => ({
+        id: uid(),
+        date: `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(r.dueDay).padStart(2, '0')}`,
+        desc: r.name,
+        amount: -r.amount,
+        category: r.category,
+        paid: r.autoPay,
+      }));
+
+    dispatch({
+      type: 'CLOSE_MONTH',
+      payload: { endingBalance, nextMonth, nextYear, nextMonthKey, unpaidTxs, recurringTxs },
+    });
+
+    return { unpaidCount: unpaidTxs.length, recurringCount: recurringTxs.length, endingBalance };
+  }, [state.month, state.year, state.recurringExpenses, state.transactions, monthTx, stats.calculatedEnding, dispatch]);
+
   const value = {
     state, dispatch, theme,
     monthTx, stats, catBreakdown, filtered, budgetAnalysis, budgetStats,
     totalMonthlyRecurring, spendingTrends, upcomingBills, cycleData,
     debtPayoffPlan, savingsRecommendations, currentMonthKey, getBeginningBalance,
+    closeMonth,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

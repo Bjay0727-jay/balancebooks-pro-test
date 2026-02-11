@@ -1,10 +1,65 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { CATEGORIES } from '../utils/constants';
+import { CATEGORIES, UPCOMING_BILLS_LIMIT, RECENT_TRANSACTIONS_LIMIT, SPENDING_CATEGORIES_LIMIT } from '../utils/constants';
 import { currency, shortDate } from '../utils/helpers';
+
+const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+
+const DashboardTxRow = React.memo(function DashboardTxRow({ tx, theme, isLast, onTogglePaid }) {
+  const cat = CATEGORY_MAP[tx.category];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', padding: '12px 20px',
+      borderBottom: isLast ? 'none' : `1px solid ${theme.borderLight}`,
+      cursor: 'pointer',
+    }}>
+      <div style={{
+        width: '18px', height: '18px', borderRadius: '5px',
+        border: tx.paid ? 'none' : `2px solid ${theme.border}`,
+        background: tx.paid ? theme.accent : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginRight: '12px', cursor: 'pointer', flexShrink: 0,
+      }}
+        role="checkbox" aria-checked={tx.paid} aria-label={`Mark ${tx.desc} as ${tx.paid ? 'unpaid' : 'paid'}`}
+        tabIndex={0}
+        onClick={() => onTogglePaid(tx.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTogglePaid(tx.id); } }}
+      >
+        {tx.paid && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
+      </div>
+      <div style={{
+        width: '36px', height: '36px', borderRadius: '8px', background: theme.bgHover,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
+        marginRight: '12px', flexShrink: 0,
+      }}>
+        {cat?.icon}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '13px', fontWeight: '500', color: theme.text, marginBottom: '2px' }}>{tx.desc}</div>
+        <div style={{ fontSize: '11px', color: theme.textMuted, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {shortDate(tx.date)} &bull; {cat?.name}
+          <span style={{
+            padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
+            background: tx.paid ? theme.successBg : theme.warningBg,
+            color: tx.paid ? theme.success : theme.warning,
+          }}>
+            {tx.paid ? 'Paid' : 'Pending'}
+          </span>
+        </div>
+      </div>
+      <div style={{ fontSize: '14px', fontWeight: '600', color: tx.amount > 0 ? theme.success : theme.text }}>
+        {tx.amount > 0 ? '+' : ''}{currency(tx.amount)}
+      </div>
+    </div>
+  );
+});
 
 export default function Dashboard() {
   const { state, dispatch, theme, stats, catBreakdown, monthTx, upcomingBills, savingsRecommendations, totalMonthlyRecurring } = useApp();
+
+  const handleTogglePaid = useCallback((id) => {
+    dispatch({ type: 'TOGGLE_PAID', payload: id });
+  }, [dispatch]);
 
   const card = {
     background: theme.bgCard, borderRadius: '12px',
@@ -39,7 +94,7 @@ export default function Dashboard() {
             <span style={{ fontSize: '16px' }}>🔔</span>
             <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: theme.warning }}>Upcoming Bills</h3>
           </div>
-          {upcomingBills.slice(0, 3).map(b => (
+          {upcomingBills.slice(0, UPCOMING_BILLS_LIMIT).map(b => (
             <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '13px' }}>
               <span style={{ color: theme.text }}>{b.name}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -67,51 +122,15 @@ export default function Dashboard() {
                 <div style={{ fontSize: '32px', marginBottom: '8px' }}>📭</div>
                 <p style={{ fontSize: '13px' }}>No transactions this month</p>
               </div>
-            ) : monthTx.slice(0, 6).map((tx, i) => {
-              const cat = CATEGORIES.find(c => c.id === tx.category);
-              return (
-                <div key={tx.id} style={{
-                  display: 'flex', alignItems: 'center', padding: '12px 20px',
-                  borderBottom: i < Math.min(monthTx.length, 6) - 1 ? `1px solid ${theme.borderLight}` : 'none',
-                  cursor: 'pointer',
-                }}>
-                  <div style={{
-                    width: '18px', height: '18px', borderRadius: '5px',
-                    border: tx.paid ? 'none' : `2px solid ${theme.border}`,
-                    background: tx.paid ? theme.accent : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginRight: '12px', cursor: 'pointer', flexShrink: 0,
-                  }}
-                    onClick={() => dispatch({ type: 'TOGGLE_PAID', payload: tx.id })}
-                  >
-                    {tx.paid && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
-                  </div>
-                  <div style={{
-                    width: '36px', height: '36px', borderRadius: '8px', background: theme.bgHover,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
-                    marginRight: '12px', flexShrink: 0,
-                  }}>
-                    {cat?.icon}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', color: theme.text, marginBottom: '2px' }}>{tx.desc}</div>
-                    <div style={{ fontSize: '11px', color: theme.textMuted, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {shortDate(tx.date)} &bull; {cat?.name}
-                      <span style={{
-                        padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
-                        background: tx.paid ? theme.successBg : theme.warningBg,
-                        color: tx.paid ? theme.success : theme.warning,
-                      }}>
-                        {tx.paid ? 'Paid' : 'Pending'}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: tx.amount > 0 ? theme.success : theme.text }}>
-                    {tx.amount > 0 ? '+' : ''}{currency(tx.amount)}
-                  </div>
-                </div>
-              );
-            })}
+            ) : monthTx.slice(0, RECENT_TRANSACTIONS_LIMIT).map((tx, i) => (
+              <DashboardTxRow
+                key={tx.id}
+                tx={tx}
+                theme={theme}
+                isLast={i >= Math.min(monthTx.length, RECENT_TRANSACTIONS_LIMIT) - 1}
+                onTogglePaid={handleTogglePaid}
+              />
+            ))}
           </div>
         </div>
 
@@ -148,7 +167,7 @@ export default function Dashboard() {
             <div style={{ padding: '12px 20px' }}>
               {catBreakdown.length === 0 ? (
                 <p style={{ fontSize: '13px', color: theme.textMuted, textAlign: 'center', padding: '20px 0' }}>No spending data</p>
-              ) : catBreakdown.slice(0, 5).map(cat => (
+              ) : catBreakdown.slice(0, SPENDING_CATEGORIES_LIMIT).map(cat => (
                 <div key={cat.id} style={{ marginBottom: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '12px' }}>
                     <span style={{ color: theme.text, fontWeight: '500' }}>{cat.icon} {cat.name}</span>

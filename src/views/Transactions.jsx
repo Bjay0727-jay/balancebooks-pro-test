@@ -1,21 +1,125 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { CATEGORIES } from '../utils/constants';
+import { CATEGORIES, TRANSACTIONS_PAGE_SIZE } from '../utils/constants';
 import { currency, shortDate, exportCSV } from '../utils/helpers';
+
+const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+
+const TxRow = React.memo(function TxRow({ tx, theme, isSelected, isLast, onToggleSelect, onTogglePaid, onEdit, onDelete }) {
+  const cat = CATEGORY_MAP[tx.category];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', padding: '12px 20px',
+      borderBottom: isLast ? 'none' : `1px solid ${theme.borderLight}`,
+      background: isSelected ? theme.accentLight : 'transparent',
+    }}>
+      {/* Selection checkbox */}
+      <div
+        role="checkbox"
+        aria-checked={isSelected}
+        aria-label={`Select ${tx.desc}`}
+        tabIndex={0}
+        onClick={() => onToggleSelect(tx.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleSelect(tx.id); } }}
+        style={{
+          width: '18px', height: '18px', borderRadius: '4px',
+          border: isSelected ? 'none' : `2px solid ${theme.border}`,
+          background: isSelected ? theme.accent : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginRight: '10px', cursor: 'pointer', flexShrink: 0,
+        }}
+      >
+        {isSelected && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
+      </div>
+      {/* Paid toggle */}
+      <div
+        role="checkbox"
+        aria-checked={tx.paid}
+        aria-label={`Mark ${tx.desc} as ${tx.paid ? 'unpaid' : 'paid'}`}
+        tabIndex={0}
+        onClick={() => onTogglePaid(tx.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTogglePaid(tx.id); } }}
+        style={{
+          width: '18px', height: '18px', borderRadius: '50%',
+          border: tx.paid ? 'none' : `2px solid ${theme.border}`,
+          background: tx.paid ? theme.success : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginRight: '12px', cursor: 'pointer', flexShrink: 0,
+        }}
+      >
+        {tx.paid && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
+      </div>
+      <div style={{
+        width: '36px', height: '36px', borderRadius: '8px', background: theme.bgHover,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
+        marginRight: '12px', flexShrink: 0,
+      }}>
+        {cat?.icon}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '13px', fontWeight: '500', color: theme.text, marginBottom: '2px' }}>{tx.desc}</div>
+        <div style={{ fontSize: '11px', color: theme.textMuted, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {shortDate(tx.date)} &bull; {cat?.name}
+          <span style={{
+            padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
+            background: tx.paid ? theme.successBg : theme.warningBg,
+            color: tx.paid ? theme.success : theme.warning,
+          }}>
+            {tx.paid ? 'Paid' : 'Pending'}
+          </span>
+        </div>
+      </div>
+      <div style={{ fontSize: '14px', fontWeight: '600', color: tx.amount > 0 ? theme.success : theme.text, marginRight: '12px' }}>
+        {tx.amount > 0 ? '+' : ''}{currency(tx.amount)}
+      </div>
+      <button onClick={() => onEdit(tx)} aria-label={`Edit ${tx.desc}`} style={{
+        background: 'none', border: 'none', cursor: 'pointer', color: theme.accent, fontSize: '14px', padding: '4px 6px',
+      }}>✏️</button>
+      <button onClick={() => onDelete(tx.id)} aria-label={`Delete ${tx.desc}`} style={{
+        background: 'none', border: 'none', cursor: 'pointer', color: theme.danger, fontSize: '14px', padding: '4px 6px',
+      }}>🗑</button>
+    </div>
+  );
+});
 
 export default function Transactions() {
   const { state, dispatch, theme, filtered } = useApp();
   const [selected, setSelected] = useState(new Set());
+  const [localSearch, setLocalSearch] = useState(state.search);
+  const debounceRef = useRef(null);
 
-  const pageItems = useMemo(() => filtered.slice(0, 50), [filtered]);
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setLocalSearch(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      dispatch({ type: 'SET_SEARCH', payload: val });
+    }, 300);
+  }, [dispatch]);
 
-  const toggleSelect = (id) => {
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  const pageItems = useMemo(() => filtered.slice(0, TRANSACTIONS_PAGE_SIZE), [filtered]);
+
+  const toggleSelect = useCallback((id) => {
     setSelected(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
+  }, []);
+
+  const handleTogglePaid = useCallback((id) => {
+    dispatch({ type: 'TOGGLE_PAID', payload: id });
+  }, [dispatch]);
+
+  const handleEdit = useCallback((tx) => {
+    dispatch({ type: 'SET_EDIT_TX', payload: tx });
+  }, [dispatch]);
+
+  const handleDelete = useCallback((id) => {
+    dispatch({ type: 'DELETE_TRANSACTION', payload: id });
+  }, [dispatch]);
 
   const selectAll = () => setSelected(new Set(pageItems.map(t => t.id)));
   const deselectAll = () => setSelected(new Set());
@@ -47,8 +151,9 @@ export default function Transactions() {
         <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
           <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px' }}>🔍</span>
           <input
-            type="text" placeholder="Search..." value={state.search}
-            onChange={e => dispatch({ type: 'SET_SEARCH', payload: e.target.value })}
+            type="text" placeholder="Search..." value={localSearch}
+            onChange={handleSearchChange}
+            aria-label="Search transactions"
             style={{ ...inputStyle, width: '100%', paddingLeft: '36px' }}
           />
         </div>
@@ -99,9 +204,14 @@ export default function Transactions() {
             border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
           }}>📥 Export CSV</button>
           <button onClick={() => {
-            if (state.transactions.length > 0 && confirm(`Delete ALL ${state.transactions.length} transactions? This cannot be undone.`)) {
-              dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
-              setSelected(new Set());
+            if (state.transactions.length > 0) {
+              dispatch({ type: 'SET_DIALOG', payload: {
+                title: 'Delete All Transactions',
+                message: `Delete ALL ${state.transactions.length} transactions? This cannot be undone.`,
+                variant: 'danger', confirmLabel: 'Delete All', cancelLabel: 'Cancel',
+                onConfirm: () => { dispatch({ type: 'SET_TRANSACTIONS', payload: [] }); setSelected(new Set()); },
+                onCancel: () => {},
+              }});
             }
           }} style={{
             padding: '8px 14px', background: theme.danger, color: 'white',
@@ -123,76 +233,22 @@ export default function Transactions() {
               {state.search || state.filterCat !== 'all' || state.filterPaid !== 'all' ? 'Try adjusting your filters' : 'Add your first transaction to get started'}
             </p>
           </div>
-        ) : pageItems.map((tx, i) => {
-          const cat = CATEGORIES.find(c => c.id === tx.category);
-          const isSelected = selected.has(tx.id);
-          return (
-            <div key={tx.id} style={{
-              display: 'flex', alignItems: 'center', padding: '12px 20px',
-              borderBottom: i < pageItems.length - 1 ? `1px solid ${theme.borderLight}` : 'none',
-              background: isSelected ? theme.accentLight : 'transparent',
-            }}>
-              {/* Selection checkbox */}
-              <div
-                onClick={() => toggleSelect(tx.id)}
-                style={{
-                  width: '18px', height: '18px', borderRadius: '4px',
-                  border: isSelected ? 'none' : `2px solid ${theme.border}`,
-                  background: isSelected ? theme.accent : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  marginRight: '10px', cursor: 'pointer', flexShrink: 0,
-                }}
-              >
-                {isSelected && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
-              </div>
-              {/* Paid toggle */}
-              <div
-                onClick={() => dispatch({ type: 'TOGGLE_PAID', payload: tx.id })}
-                style={{
-                  width: '18px', height: '18px', borderRadius: '50%',
-                  border: tx.paid ? 'none' : `2px solid ${theme.border}`,
-                  background: tx.paid ? theme.success : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  marginRight: '12px', cursor: 'pointer', flexShrink: 0,
-                }}
-              >
-                {tx.paid && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
-              </div>
-              <div style={{
-                width: '36px', height: '36px', borderRadius: '8px', background: theme.bgHover,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
-                marginRight: '12px', flexShrink: 0,
-              }}>
-                {cat?.icon}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: '500', color: theme.text, marginBottom: '2px' }}>{tx.desc}</div>
-                <div style={{ fontSize: '11px', color: theme.textMuted, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {shortDate(tx.date)} &bull; {cat?.name}
-                  <span style={{
-                    padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
-                    background: tx.paid ? theme.successBg : theme.warningBg,
-                    color: tx.paid ? theme.success : theme.warning,
-                  }}>
-                    {tx.paid ? 'Paid' : 'Pending'}
-                  </span>
-                </div>
-              </div>
-              <div style={{ fontSize: '14px', fontWeight: '600', color: tx.amount > 0 ? theme.success : theme.text, marginRight: '12px' }}>
-                {tx.amount > 0 ? '+' : ''}{currency(tx.amount)}
-              </div>
-              <button onClick={() => dispatch({ type: 'SET_EDIT_TX', payload: tx })} style={{
-                background: 'none', border: 'none', cursor: 'pointer', color: theme.accent, fontSize: '14px', padding: '4px 6px',
-              }}>✏️</button>
-              <button onClick={() => dispatch({ type: 'DELETE_TRANSACTION', payload: tx.id })} style={{
-                background: 'none', border: 'none', cursor: 'pointer', color: theme.danger, fontSize: '14px', padding: '4px 6px',
-              }}>🗑</button>
-            </div>
-          );
-        })}
-        {filtered.length > 50 && (
+        ) : pageItems.map((tx, i) => (
+          <TxRow
+            key={tx.id}
+            tx={tx}
+            theme={theme}
+            isSelected={selected.has(tx.id)}
+            isLast={i >= pageItems.length - 1}
+            onToggleSelect={toggleSelect}
+            onTogglePaid={handleTogglePaid}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
+        ))}
+        {filtered.length > TRANSACTIONS_PAGE_SIZE && (
           <div style={{ padding: '12px 20px', textAlign: 'center', fontSize: '12px', color: theme.textMuted, background: theme.bgSecondary }}>
-            Showing first 50 of {filtered.length} transactions. Use filters to narrow results.
+            Showing first {TRANSACTIONS_PAGE_SIZE} of {filtered.length} transactions. Use filters to narrow results.
           </div>
         )}
       </div>

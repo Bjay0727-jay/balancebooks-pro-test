@@ -1,10 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { NAV_SECTIONS, APP_VERSION } from '../utils/constants';
-import { isMobile } from '../utils/helpers';
+import { getIsMobile } from '../utils/helpers';
 
 export default function Sidebar() {
   const { state, dispatch, theme, stats, budgetStats } = useApp();
+  const mobile = getIsMobile();
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (getIsMobile() && state.sidebarOpen) {
+        dispatch({ type: 'SET_SIDEBAR', payload: false });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [state.sidebarOpen, dispatch]);
 
   const badges = {
     transactions: stats.unpaidCount || null,
@@ -16,7 +27,7 @@ export default function Sidebar() {
 
   return (
     <>
-      {isMobile && state.sidebarOpen && (
+      {mobile && state.sidebarOpen && (
         <div
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 90 }}
           onClick={() => dispatch({ type: 'SET_SIDEBAR', payload: false })}
@@ -64,35 +75,48 @@ export default function Sidebar() {
               }}>
                 {section.section}
               </div>
-              {section.items.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    dispatch({ type: 'SET_VIEW', payload: item.id });
-                    if (isMobile) dispatch({ type: 'SET_SIDEBAR', payload: false });
-                  }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '10px 12px', borderRadius: '8px',
-                    fontSize: '13px', fontWeight: '600',
-                    color: state.view === item.id ? 'white' : theme.text,
-                    background: state.view === item.id ? theme.navActive : 'transparent',
-                    cursor: 'pointer', marginBottom: '2px', transition: 'all 150ms ease',
-                  }}
-                >
-                  <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>{item.icon}</span>
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                  {badges[item.id] && (
-                    <span style={{
-                      padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '600',
-                      background: state.view === item.id ? 'rgba(255,255,255,0.2)' : theme.warningBg,
-                      color: state.view === item.id ? 'white' : theme.warning,
-                    }}>
-                      {badges[item.id]}
-                    </span>
-                  )}
-                </div>
-              ))}
+              {section.items.map((item) => {
+                const isActive = state.view === item.id;
+                return (
+                  <div
+                    key={item.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => {
+                      dispatch({ type: 'SET_VIEW', payload: item.id });
+                      if (mobile) dispatch({ type: 'SET_SIDEBAR', payload: false });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        dispatch({ type: 'SET_VIEW', payload: item.id });
+                        if (mobile) dispatch({ type: 'SET_SIDEBAR', payload: false });
+                      }
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '10px 12px', borderRadius: '8px',
+                      fontSize: '13px', fontWeight: '600',
+                      color: isActive ? 'white' : theme.text,
+                      background: isActive ? theme.navActive : 'transparent',
+                      cursor: 'pointer', marginBottom: '2px', transition: 'all 150ms ease',
+                    }}
+                  >
+                    <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }} aria-hidden="true">{item.icon}</span>
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    {badges[item.id] && (
+                      <span style={{
+                        padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '600',
+                        background: isActive ? 'rgba(255,255,255,0.2)' : theme.warningBg,
+                        color: isActive ? 'white' : theme.warning,
+                      }}>
+                        {badges[item.id]}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </nav>
@@ -100,7 +124,11 @@ export default function Sidebar() {
         {/* Footer */}
         <div style={{ padding: '16px', borderTop: `1px solid ${theme.border}` }}>
           <div
+            role="button"
+            tabIndex={0}
+            aria-label={state.darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => dispatch({ type: 'TOGGLE_DARK_MODE' })}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch({ type: 'TOGGLE_DARK_MODE' }); } }}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '10px 12px', borderRadius: '8px', background: theme.bgHover,

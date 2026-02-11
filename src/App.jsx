@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from './context/AppContext';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Modal from './components/Modal';
+import ConfirmDialog from './components/ConfirmDialog';
 import { TxForm, RecurringForm, DebtForm, BudgetSetForm, SimpleValueForm } from './components/Forms';
 import Dashboard from './views/Dashboard';
 import Transactions from './views/Transactions';
@@ -20,15 +21,21 @@ import { getDateParts, uid, currency } from './utils/helpers';
 import { FULL_MONTHS, APP_VERSION } from './utils/constants';
 import { validateBackupData, validateImportTransactions, MAX_IMPORT_FILE_SIZE } from './utils/validation';
 
+const showDialog = (dispatch, opts) => dispatch({ type: 'SET_DIALOG', payload: opts });
+const closeDialog = (dispatch) => dispatch({ type: 'SET_DIALOG', payload: null });
+
 function AppContent() {
   const { state, dispatch, theme, stats } = useApp();
+  const [importing, setImporting] = useState(false);
 
   const handleFileImport = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || importing) return;
+    setImporting(true);
     if (file.size > MAX_IMPORT_FILE_SIZE) {
-      alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_IMPORT_FILE_SIZE / 1024 / 1024} MB.`);
+      showDialog(dispatch, { title: 'File Too Large', message: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_IMPORT_FILE_SIZE / 1024 / 1024} MB.`, variant: 'warning' });
       e.target.value = '';
+      setImporting(false);
       return;
     }
     const filename = file.name.toLowerCase();
@@ -37,16 +44,18 @@ function AppContent() {
       if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
         result = await parseExcel(file);
         if (result.transactions.length === 0 && result.errors.length > 0) {
-          alert(`Unable to read Excel file.\n\n${result.errors[0]}`);
+          showDialog(dispatch, { title: 'Import Error', message: `Unable to read Excel file.\n\n${result.errors[0]}`, variant: 'warning' });
           e.target.value = '';
+          setImporting(false);
           return;
         }
       } else if (filename.endsWith('.csv') || filename.endsWith('.txt')) {
         const content = await file.text();
         result = parseCSV(content);
       } else {
-        alert('Please upload a CSV or Excel file.');
+        showDialog(dispatch, { title: 'Unsupported Format', message: 'Please upload a CSV or Excel file.', variant: 'warning' });
         e.target.value = '';
+        setImporting(false);
         return;
       }
 
@@ -67,12 +76,13 @@ function AppContent() {
         }});
         dispatch({ type: 'SET_MODAL', payload: 'import-confirm' });
       } else {
-        alert(`No valid transactions found in "${file.name}".`);
+        showDialog(dispatch, { title: 'No Data Found', message: `No valid transactions found in "${file.name}".`, variant: 'warning' });
       }
     } catch (err) {
-      alert(`Error reading file: ${err.message}`);
+      showDialog(dispatch, { title: 'Import Error', message: `Error reading file: ${err.message}`, variant: 'danger' });
     }
     e.target.value = '';
+    setImporting(false);
   };
 
   const confirmImport = () => {
@@ -296,7 +306,7 @@ function AppContent() {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   if (file.size > MAX_IMPORT_FILE_SIZE) {
-                    alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_IMPORT_FILE_SIZE / 1024 / 1024} MB.`);
+                    showDialog(dispatch, { title: 'File Too Large', message: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_IMPORT_FILE_SIZE / 1024 / 1024} MB.`, variant: 'warning' });
                     e.target.value = '';
                     return;
                   }
@@ -306,7 +316,7 @@ function AppContent() {
                       const parsed = JSON.parse(ev.target.result);
                       const result = validateBackupData(parsed);
                       if (!result.valid) {
-                        alert(result.error);
+                        showDialog(dispatch, { title: 'Invalid Backup', message: result.error, variant: 'danger' });
                         return;
                       }
                       const { data, skipped } = result;
@@ -327,7 +337,7 @@ function AppContent() {
                         },
                         validated: data,
                       }});
-                    } catch { alert('Could not read this file. Make sure it is a valid JSON backup.'); }
+                    } catch { showDialog(dispatch, { title: 'Invalid File', message: 'Could not read this file. Make sure it is a valid JSON backup.', variant: 'danger' }); }
                   };
                   reader.readAsText(file);
                   e.target.value = '';
@@ -361,12 +371,49 @@ function AppContent() {
                 <button onClick={() => dispatch({ type: 'SET_RESTORE_DATA', payload: null })} style={{ flex: 1, padding: '12px', background: theme.bgHover, color: theme.text, border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Back</button>
                 <button onClick={() => {
                   dispatch({ type: 'RESTORE_BACKUP', payload: state.restoreData.validated });
-                  alert('Data restored successfully!');
+                  showDialog(dispatch, { title: 'Restore Complete', message: 'Data restored successfully!', variant: 'success' });
                 }} style={{ flex: 1, padding: '12px', background: theme.success, color: 'white', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Restore</button>
               </div>
             </div>
           )}
         </Modal>
+      )}
+
+      {/* Loading Overlay for Import */}
+      {importing && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)',
+          backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 300,
+        }}>
+          <div style={{
+            background: theme.bgCard, borderRadius: '16px', padding: '32px 40px',
+            textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', border: theme.cardBorder,
+          }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px', animation: 'spin 1s linear infinite' }}>⏳</div>
+            <div style={{ fontWeight: '600', color: theme.text, marginBottom: '4px' }}>Importing...</div>
+            <div style={{ fontSize: '12px', color: theme.textSecondary }}>Processing your file</div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      {state.dialog && (
+        <ConfirmDialog
+          title={state.dialog.title}
+          message={state.dialog.message}
+          variant={state.dialog.variant}
+          confirmLabel={state.dialog.confirmLabel}
+          cancelLabel={state.dialog.cancelLabel}
+          onConfirm={() => {
+            if (state.dialog.onConfirm) state.dialog.onConfirm();
+            closeDialog(dispatch);
+          }}
+          onCancel={state.dialog.onCancel ? () => {
+            state.dialog.onCancel();
+            closeDialog(dispatch);
+          } : undefined}
+        />
       )}
 
       {/* Import Notification Toast */}

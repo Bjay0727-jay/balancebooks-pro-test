@@ -36,6 +36,14 @@ export const FREQUENCY_OPTIONS = [
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const FULL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+export const TRANSACTIONS_PAGE_SIZE = 50;
+export const RECENT_TRANSACTIONS_LIMIT = 6;
+export const UPCOMING_BILLS_LIMIT = 3;
+export const PIE_CHART_CATEGORIES_LIMIT = 8;
+export const SPENDING_CATEGORIES_LIMIT = 5;
+export const DEBT_PAYOFF_MAX_MONTHS = 360;
+export const SPENDING_HISTORY_MONTHS = 6;
+
 export const NAV_SECTIONS = [
   { section: 'Overview', items: [
     { id: 'dashboard', icon: '📊', label: 'Dashboard' },

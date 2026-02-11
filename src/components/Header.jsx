@@ -4,7 +4,26 @@ import { MONTHS, FULL_MONTHS } from '../utils/constants';
 import { currency } from '../utils/helpers';
 
 export default function Header() {
-  const { state, dispatch, theme, stats } = useApp();
+  const { state, dispatch, theme, stats, closeMonth } = useApp();
+
+  const handleCloseMonth = () => {
+    const nextM = state.month === 11 ? 0 : state.month + 1;
+    const nextY = state.month === 11 ? state.year + 1 : state.year;
+    dispatch({ type: 'SET_DIALOG', payload: {
+      title: `Close ${FULL_MONTHS[state.month]} ${state.year}`,
+      message: `This will:\n\n\u2022 Set ending balance to ${currency(stats.calculatedEnding)}\n\u2022 Carry ${currency(stats.calculatedEnding)} as ${FULL_MONTHS[nextM]} beginning balance\n\u2022 Move ${stats.unpaidCount} unpaid expense(s) to ${FULL_MONTHS[nextM]}\n\u2022 Populate recurring bills for ${FULL_MONTHS[nextM]}`,
+      variant: 'info', confirmLabel: 'Close Month', cancelLabel: 'Cancel',
+      onConfirm: () => {
+        const result = closeMonth();
+        dispatch({ type: 'SET_DIALOG', payload: {
+          title: 'Month Closed',
+          message: `${FULL_MONTHS[state.month]} has been closed.\n\n\u2022 Balance carried: ${currency(result.endingBalance)}\n\u2022 Unpaid expenses moved: ${result.unpaidCount}\n\u2022 Recurring bills created: ${result.recurringCount}`,
+          variant: 'success',
+        }});
+      },
+      onCancel: () => {},
+    }});
+  };
 
   const viewLabels = {
     dashboard: 'Dashboard',
@@ -76,6 +95,19 @@ export default function Header() {
               ▶
             </button>
           </div>
+
+          {/* Close Month Button */}
+          <button
+            onClick={handleCloseMonth}
+            title="Close month and carry forward"
+            style={{
+              background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)',
+              padding: '10px 14px', borderRadius: '8px', fontWeight: '600',
+              fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+            }}
+          >
+            Close Month
+          </button>
 
           {/* Add Button */}
           <button
