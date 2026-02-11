@@ -4,7 +4,10 @@
   "version": "2.1.0",
   "type": "module",
   "main": "electron/main.js",
-  "author": "BalanceBooks",
+  "author": {
+    "name": "BalanceBooks",
+    "email": "support@balancebooks.pro"
+  },
   "description": "BalanceBooks Pro - Personal finance tracker",
   "scripts": {
     "dev": "vite",
