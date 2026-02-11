@@ -21,9 +21,9 @@
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
-    "installerIcon": "build/icon.ico",
-    "uninstallerIcon": "build/icon.ico",
-    "installerHeaderIcon": "build/icon.ico"
+    "installerIcon": "build/icon.png",
+    "uninstallerIcon": "build/icon.png",
+    "installerHeaderIcon": "build/icon.png"
   },
   "mac": {
     "target": [
@@ -32,7 +32,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "build/icon.icns",
+    "icon": "build/icon.png",
     "category": "public.app-category.finance"
   },
   "linux": {
