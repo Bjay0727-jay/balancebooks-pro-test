@@ -3,7 +3,9 @@ import { useApp } from '../context/AppContext';
 import { APP_VERSION } from '../utils/constants';
 import { exportCSV, downloadTemplate } from '../utils/helpers';
 
-const DROPBOX_APP_KEY = '';
+// NOTE: A production Dropbox integration should use OAuth 2.0 PKCE with a
+// server-side token exchange to avoid exposing tokens to client-side JS.
+const DROPBOX_APP_KEY = import.meta.env.VITE_DROPBOX_APP_KEY || '';
 
 export default function Settings() {
   const { state, dispatch, theme } = useApp();
@@ -11,12 +13,13 @@ export default function Settings() {
   const [dropboxUser, setDropboxUser] = useState(null);
   const [backupProgress, setBackupProgress] = useState(null);
 
-  // Check for existing Dropbox token on mount
+  // Check for existing Dropbox token on mount.
+  // Tokens are stored in sessionStorage so they don't persist across sessions.
   useEffect(() => {
-    const token = localStorage.getItem('bb_dropbox_token');
+    const token = sessionStorage.getItem('bb_dropbox_token');
     if (token) {
       setDropboxStatus('connected');
-      const user = localStorage.getItem('bb_dropbox_user');
+      const user = sessionStorage.getItem('bb_dropbox_user');
       if (user) setDropboxUser(user);
     }
     // Check for OAuth redirect hash
@@ -24,8 +27,9 @@ export default function Settings() {
       const params = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = params.get('access_token');
       if (accessToken) {
-        localStorage.setItem('bb_dropbox_token', accessToken);
+        sessionStorage.setItem('bb_dropbox_token', accessToken);
         setDropboxStatus('connected');
+        // Remove token from URL immediately to prevent leaking via referrer
         window.history.replaceState(null, '', window.location.pathname);
         // Fetch user info
         fetch('https://api.dropboxapi.com/2/users/get_current_account', {
@@ -34,7 +38,7 @@ export default function Settings() {
           if (data.name) {
             const name = data.name.display_name;
             setDropboxUser(name);
-            localStorage.setItem('bb_dropbox_user', name);
+            sessionStorage.setItem('bb_dropbox_user', name);
           }
         }).catch(() => {});
       }
@@ -97,12 +101,12 @@ export default function Settings() {
   const disconnectDropbox = () => {
     setDropboxStatus('disconnected');
     setDropboxUser(null);
-    localStorage.removeItem('bb_dropbox_token');
-    localStorage.removeItem('bb_dropbox_user');
+    sessionStorage.removeItem('bb_dropbox_token');
+    sessionStorage.removeItem('bb_dropbox_user');
   };
 
   const backupToDropbox = async () => {
-    const token = localStorage.getItem('bb_dropbox_token');
+    const token = sessionStorage.getItem('bb_dropbox_token');
     if (!token) { alert('Please connect Dropbox first.'); return; }
     setBackupProgress('uploading');
     try {

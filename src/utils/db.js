@@ -19,8 +19,8 @@ export async function migrateTransactions() {
         await db.transactions.bulkPut(txs);
       }
     }
-  } catch {
-    // silent fail — localStorage data stays as fallback
+  } catch (err) {
+    console.warn('[BalanceBooks] IndexedDB migration failed, localStorage data used as fallback:', err);
   }
 }
 
@@ -28,13 +28,14 @@ export async function loadTransactions() {
   try {
     const txs = await db.transactions.toArray();
     if (txs.length > 0) return txs;
-  } catch {
-    // fallback to localStorage
+  } catch (err) {
+    console.warn('[BalanceBooks] Failed to load from IndexedDB, falling back to localStorage:', err);
   }
   try {
     const raw = localStorage.getItem('bb_transactions');
     return raw ? JSON.parse(raw) : [];
-  } catch {
+  } catch (err) {
+    console.warn('[BalanceBooks] Failed to parse transactions from localStorage:', err);
     return [];
   }
 }
@@ -47,11 +48,13 @@ export async function saveTransactions(transactions) {
         await db.transactions.bulkPut(transactions);
       }
     });
-  } catch {
-    // fallback: save to localStorage
+  } catch (err) {
+    console.warn('[BalanceBooks] Failed to save to IndexedDB, falling back to localStorage:', err);
     try {
       localStorage.setItem('bb_transactions', JSON.stringify(transactions));
-    } catch {}
+    } catch (lsErr) {
+      console.warn('[BalanceBooks] localStorage fallback also failed:', lsErr);
+    }
   }
 }
 
@@ -62,7 +65,8 @@ export async function getTransactionsByMonth(year, month) {
   const end = `${year}-${monthStr}-31`;
   try {
     return await db.transactions.where('date').between(start, end, true, true).toArray();
-  } catch {
+  } catch (err) {
+    console.warn('[BalanceBooks] Failed to query transactions by month from IndexedDB:', err);
     return [];
   }
 }

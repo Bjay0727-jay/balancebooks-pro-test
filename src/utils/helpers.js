@@ -40,7 +40,9 @@ const flushSaves = () => {
     for (const [key, data] of Object.entries(pendingSaves)) {
       localStorage.setItem('bb_' + key, JSON.stringify(data));
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[BalanceBooks] Failed to save data to localStorage:', err);
+  }
   for (const key in pendingSaves) delete pendingSaves[key];
 };
 
@@ -59,16 +61,16 @@ export const loadData = (key, defaultValue) => {
   }
 };
 
-// CSV escape helper - prevents CSV injection
+// CSV escape helper — prevents CSV injection (OWASP recommendation).
+// Fields starting with =, +, -, @, tab, or CR are wrapped in quotes with a
+// leading tab character so spreadsheet software treats them as plain text.
 const escapeCSVField = (value) => {
-  const str = String(value);
-  if (/^[=+\-@\t\r]/.test(str)) {
-    return `"'${str.replace(/"/g, '""')}"`;
-  }
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
+  const str = String(value ?? '');
+  const needsFormulaGuard = /^[=+\-@\t\r]/.test(str);
+  const needsQuoting = needsFormulaGuard || str.includes(',') || str.includes('"') || str.includes('\n');
+  if (!needsQuoting) return str;
+  const escaped = str.replace(/"/g, '""');
+  return needsFormulaGuard ? `"\t${escaped}"` : `"${escaped}"`;
 };
 
 export const exportCSV = (transactions) => {
@@ -84,10 +86,10 @@ export const exportCSV = (transactions) => {
   sorted.forEach(t => {
     const cat = CATEGORIES.find(c => c.id === t.category);
     rows.push([
-      t.date,
+      escapeCSVField(t.date),
       escapeCSVField(t.desc),
-      t.amount.toFixed(2),
-      cat ? cat.name : t.category,
+      escapeCSVField(t.amount.toFixed(2)),
+      escapeCSVField(cat ? cat.name : t.category),
       t.amount >= 0 ? 'Income' : 'Expense',
       t.paid ? 'Paid' : 'Unpaid',
     ]);
@@ -95,7 +97,7 @@ export const exportCSV = (transactions) => {
 
   const totalIncome = transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const totalExpenses = transactions.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
-  rows.push([''], ['=== SUMMARY ===']);
+  rows.push([''], ['--- SUMMARY ---']);
   rows.push(['Total Income', '', totalIncome.toFixed(2)]);
   rows.push(['Total Expenses', '', (-totalExpenses).toFixed(2)]);
   rows.push(['Net Amount', '', (totalIncome - totalExpenses).toFixed(2)]);

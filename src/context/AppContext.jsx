@@ -123,8 +123,8 @@ export function AppProvider({ children }) {
         if (!cancelled && txs.length > 0) {
           dispatch({ type: 'SET_TRANSACTIONS', payload: txs });
         }
-      } catch {
-        // localStorage data already loaded via initialState
+      } catch (err) {
+        console.warn('[BalanceBooks] IndexedDB init failed, using localStorage fallback:', err);
       }
       if (!cancelled) setDbReady(true);
     })();

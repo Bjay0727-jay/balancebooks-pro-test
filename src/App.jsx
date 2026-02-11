@@ -18,6 +18,7 @@ import Settings from './views/Settings';
 import { parseCSV, parseExcel } from './utils/importParser';
 import { getDateParts, uid, currency } from './utils/helpers';
 import { FULL_MONTHS, APP_VERSION } from './utils/constants';
+import { validateBackupData, validateImportTransactions, MAX_IMPORT_FILE_SIZE } from './utils/validation';
 
 function AppContent() {
   const { state, dispatch, theme, stats } = useApp();
@@ -25,6 +26,11 @@ function AppContent() {
   const handleFileImport = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMPORT_FILE_SIZE) {
+      alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_IMPORT_FILE_SIZE / 1024 / 1024} MB.`);
+      e.target.value = '';
+      return;
+    }
     const filename = file.name.toLowerCase();
     let result;
     try {
@@ -45,13 +51,18 @@ function AppContent() {
       }
 
       if (result.transactions.length > 0) {
-        result.transactions.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        const validated = validateImportTransactions(result.transactions);
+        const skipped = result.transactions.length - validated.length;
+        if (skipped > 0) {
+          result.errors.push(`${skipped} row(s) failed validation and were excluded.`);
+        }
+        validated.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         dispatch({ type: 'SET_IMPORT_DATA', payload: {
-          transactions: result.transactions, errors: result.errors, filename: file.name,
+          transactions: validated, errors: result.errors, filename: file.name,
           summary: {
-            total: result.transactions.length,
-            income: result.transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0),
-            expenses: result.transactions.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0),
+            total: validated.length,
+            income: validated.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0),
+            expenses: validated.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0),
           },
         }});
         dispatch({ type: 'SET_MODAL', payload: 'import-confirm' });
@@ -284,29 +295,39 @@ function AppContent() {
                 <input type="file" accept=".backup,.json" onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
+                  if (file.size > MAX_IMPORT_FILE_SIZE) {
+                    alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is ${MAX_IMPORT_FILE_SIZE / 1024 / 1024} MB.`);
+                    e.target.value = '';
+                    return;
+                  }
                   const reader = new FileReader();
                   reader.onload = (ev) => {
                     try {
                       const parsed = JSON.parse(ev.target.result);
-                      const data = parsed.data || parsed;
-                      const transactions = data.transactions || parsed.transactions;
-                      if (transactions && Array.isArray(transactions)) {
-                        dispatch({ type: 'SET_RESTORE_DATA', payload: {
-                          filename: file.name,
-                          date: parsed.exportDate || 'Unknown',
-                          version: parsed.version || '1.0',
-                          summary: {
-                            transactions: transactions.length,
-                            recurringBills: (data.recurringExpenses || parsed.recurringExpenses || []).length,
-                            debts: (data.debts || parsed.debts || []).length,
-                            budgetGoals: Object.keys(data.budgetGoals || parsed.budgetGoals || {}).filter(k => (data.budgetGoals || parsed.budgetGoals || {})[k] > 0).length,
-                          },
-                          raw: parsed,
-                        }});
-                      } else {
-                        alert('This doesn\'t look like a Balance Books backup file.');
+                      const result = validateBackupData(parsed);
+                      if (!result.valid) {
+                        alert(result.error);
+                        return;
                       }
-                    } catch { alert('Could not read this file.'); }
+                      const { data, skipped } = result;
+                      const warnings = [];
+                      if (skipped.transactions > 0) warnings.push(`${skipped.transactions} transaction(s) skipped`);
+                      if (skipped.recurringExpenses > 0) warnings.push(`${skipped.recurringExpenses} recurring bill(s) skipped`);
+                      if (skipped.debts > 0) warnings.push(`${skipped.debts} debt(s) skipped`);
+                      dispatch({ type: 'SET_RESTORE_DATA', payload: {
+                        filename: file.name,
+                        date: parsed.exportDate || 'Unknown',
+                        version: parsed.version || '1.0',
+                        warnings: warnings.length > 0 ? warnings.join(', ') + ' (invalid data)' : null,
+                        summary: {
+                          transactions: data.transactions.length,
+                          recurringBills: data.recurringExpenses.length,
+                          debts: data.debts.length,
+                          budgetGoals: Object.keys(data.budgetGoals).filter(k => data.budgetGoals[k] > 0).length,
+                        },
+                        validated: data,
+                      }});
+                    } catch { alert('Could not read this file. Make sure it is a valid JSON backup.'); }
                   };
                   reader.readAsText(file);
                   e.target.value = '';
@@ -331,19 +352,15 @@ function AppContent() {
               <div style={{ padding: '12px', background: theme.warningBg, borderRadius: '8px', fontSize: '12px', color: theme.warning }}>
                 ⚠️ This will replace all current data with the backup.
               </div>
+              {state.restoreData.warnings && (
+                <div style={{ padding: '12px', background: theme.warningBg, borderRadius: '8px', fontSize: '12px', color: theme.warning }}>
+                  ⚠️ {state.restoreData.warnings}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => dispatch({ type: 'SET_RESTORE_DATA', payload: null })} style={{ flex: 1, padding: '12px', background: theme.bgHover, color: theme.text, border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Back</button>
                 <button onClick={() => {
-                  const parsed = state.restoreData.raw;
-                  const data = parsed.data || parsed;
-                  dispatch({ type: 'RESTORE_BACKUP', payload: {
-                    transactions: data.transactions || parsed.transactions || [],
-                    recurringExpenses: data.recurringExpenses || parsed.recurringExpenses || [],
-                    monthlyBalances: data.monthlyBalances || parsed.monthlyBalances || {},
-                    savingsGoal: data.savingsGoal || parsed.savingsGoal,
-                    budgetGoals: data.budgetGoals || parsed.budgetGoals,
-                    debts: data.debts || parsed.debts,
-                  }});
+                  dispatch({ type: 'RESTORE_BACKUP', payload: state.restoreData.validated });
                   alert('Data restored successfully!');
                 }} style={{ flex: 1, padding: '12px', background: theme.success, color: 'white', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Restore</button>
               </div>
